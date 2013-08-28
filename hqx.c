@@ -31,15 +31,6 @@
 #include <gd.h>
 #include <hqx.h>
 
-static inline uint32_t swapByteOrder(uint32_t ui)
-{
-    return (ui >> 24) | ((ui << 8) & 0x00FF0000) | ((ui >> 8) & 0x0000FF00) | (ui << 24);
-}
-
-/* If you declare any globals in php_hqx.h uncomment this:
-ZEND_DECLARE_MODULE_GLOBALS(hqx)
-*/
-
 /* True global resources - no need for thread safety here */
 static int le_gd;
 
@@ -155,17 +146,16 @@ void hqx_scale(gdImagePtr srcIm, int factor, gdImagePtr* result)
 
 	srcSize = sizeof(uint32_t) * w * h;
 	dstSize = sizeof(uint32_t) * factor * w * factor * h;
+	
+	// Unfortunately it doesn't work to simply pass the gd buffer from the
+	// gdImage struct to hqx, and the gd documentation explicitly says
+	// not to access member fields directly. Thus we allocate two buffers
+	// and copy the data back and forth as a workaround.
 
 	srcBuffer = (uint32_t*)emalloc(srcSize);
 	for (y = 0; y < h; y++) {
 		for (x = 0; x < w; x++) {
-			int idx = gdImageGetPixel(srcIm, x, y);
-			//uint32_t color = ((gdImageAlpha(srcIm, idx) & 0xFF) << 24) |
-			//				 ((gdImageBlue(srcIm, idx) & 0xFF) << 16) |
-			//				 ((gdImageGreen(srcIm, idx) & 0xFF) << 8) |
-			//				 (gdImageRed(srcIm, idx) & 0xFF);
-			//srcBuffer[w*y + x] = color;
-			srcBuffer[w*y + x] = idx;
+			srcBuffer[w*y + x] = gdImageGetPixel(srcIm, x, y);
 		}
 	}
 
@@ -187,20 +177,10 @@ void hqx_scale(gdImagePtr srcIm, int factor, gdImagePtr* result)
 	dstIm = gdImageCreateTrueColor(factor*w, factor*h);
 	gdImageAlphaBlending(dstIm, 0);
 	gdImageSaveAlpha(dstIm, 1);
-	if (dstIm->trueColor == 0) {
-		printf("Not a true color image!\n");
-	}
 
 	for (y = 0; y < factor*h; y++) {
 		for (x = 0; x < factor*w; x++) {
-			uint32_t color = dstBuffer[factor*w*y + x];
-			//int alpha = (color & 0xFF000000) >> 24;
-			//int blue = (color & 0x00FF0000) >> 16;
-			//int green = (color & 0x0000FF00) >> 8;
-			//int red = color & 0x000000FF;
-			//int idx = gdImageColorAllocateAlpha(dstIm, red, green, blue, alpha);
-			//gdImageSetPixel(dstIm, x, y, idx);
-			gdImageSetPixel(dstIm, x, y, color);
+			gdImageSetPixel(dstIm, x, y, dstBuffer[factor*w*y + x]);
 		}
 	}
 
